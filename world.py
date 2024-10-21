@@ -1,15 +1,13 @@
-from __future__ import annotations
-
 from minigrid.core.constants import COLOR_NAMES
 from minigrid.core.grid import Grid
 from minigrid.core.mission import MissionSpace
-from minigrid.core.world_object import Door, Goal, Key, Wall
-from minigrid.manual_control import ManualControl
+from minigrid.core.world_object import Goal, Key, Wall
 from minigrid.minigrid_env import MiniGridEnv
 
 from DFSMaze import MazeGenerator
 
-# taken from https://minigrid.farama.org/
+import numpy as np
+
 class SimpleEnv(MiniGridEnv):
     def __init__(
         self,
@@ -27,13 +25,15 @@ class SimpleEnv(MiniGridEnv):
         generator = MazeGenerator()
         self.maze = generator.generate_maze()
 
+        self.key_available = [True, True]
+        
+        
         if max_steps is None:
             max_steps = 4 * size**2
 
         super().__init__(
             mission_space=mission_space,
             grid_size=size,
-            # Set this to True for maximum speed
             see_through_walls=True,
             max_steps=max_steps,
             **kwargs,
@@ -41,33 +41,26 @@ class SimpleEnv(MiniGridEnv):
 
     @staticmethod
     def _gen_mission():
-        return "grand mission"
+        return ""
 
-    def _gen_grid(self, width, height):
-        # Create an empty grid
+    def _gen_grid(self, width, height):        
+        
         self.grid = Grid(width, height)
-
-        # Generate the surrounding walls
-        #self.grid.wall_rect(0, 0, width, height)
-
+        
         #generate visuals from grid
-        print(self.maze)
         for i in range(0,10):
             for t in range(0,10):
                 if self.maze[i][t] == 1:
                     self.grid.set(t, i, Wall())
-                                    
-        # Generate vertical separation wall
-        # for i in range(0, height):
-        #     self.grid.set(5, i, Wall())
-        
-        # Place the door and key
-        # self.grid.set(5, 6, Door(COLOR_NAMES[0], is_locked=True))
-        # self.grid.set(3, 6, Key(COLOR_NAMES[0]))
-
-        # Place a goal square in the bottom-right corner
-        self.put_obj(Goal(), width - 2, height - 2)
-
+                if self.maze[i][t] == 3:                    
+                    self.grid.set(t, i, Key(COLOR_NAMES[0]))    
+                    self.subgoal_pos = np.ndarray((2,), buffer=np.array([t, i]), dtype=int)                           
+                if self.maze[i][t] == 4:
+                    #maybe set door as well later on?
+                    #self.grid.set(t, i, Door(COLOR_NAMES[0], is_locked=True))
+                    pass
+                if self.maze[i][t] == 5:                    
+                    self.grid.set(t, i, Goal())                    
         
         if self.agent_start_pos is not None:
             self.agent_pos = self.agent_start_pos
@@ -76,15 +69,30 @@ class SimpleEnv(MiniGridEnv):
             self.place_agent()
 
         self.mission = "grand mission"
-
-
-def main():
-    env = SimpleEnv(render_mode="human")
-
-    # enable manual control for testing
-    manual_control = ManualControl(env, seed=42)
-    manual_control.start()
-
     
-if __name__ == "__main__":
-    main()
+    # overload the step function, so we can add some rules and rewards
+    def step(self, action):
+        obs, reward, terminated, truncated, info = super().step(action)
+
+        # store truth values whether the key is available for pickup,
+        # as we will be behind a step
+        self.key_available[0] = self.key_available[1]
+        self.key_available[1] = self.grid.get(*self.subgoal_pos) is not None
+
+        # if pickup action is used, and the key is available and the agent standing in front of it,
+        # pick the key up 
+        if (action == self.actions.pickup and 
+            (self.front_pos == self.subgoal_pos).all() and 
+            self.key_available[0]):
+
+            reward = self._reward() / 1.5
+        
+        #prevent the agent to drop the key or toggle
+        if action == self.actions.drop: #or action == self.actions.toggle:
+            terminated = True
+
+        return obs, reward, terminated, truncated, info
+
+
+
+
