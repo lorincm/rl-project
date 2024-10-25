@@ -4,6 +4,7 @@ import argparse
 from minigrid.wrappers import ImgObsWrapper, FullyObsWrapper
 from gymnasium.wrappers import RecordVideo
 from minigrid.manual_control import ManualControl
+from minigrid.core.actions import Actions
 
 from stable_baselines3 import PPO
 
@@ -15,6 +16,8 @@ TRAIN = False
 EVALUATION = not TRAIN
 # MANUAL =  not TRAIN
 MANUAL = False
+
+forbidden_actions = [Actions.drop, Actions.toggle]
 
 def main():
     parser = argparse.ArgumentParser()
@@ -72,8 +75,8 @@ def main():
         env.close()
         
     if args.train:
-        model = PPO("CnnPolicy", env, policy_kwargs=policy_kwargs, verbose=1)
-        model.learn(2e5)
+        model = PPO("CnnPolicy", env, policy_kwargs=policy_kwargs, tensorboard_log="./PPO_minigrid_tensorboard/", verbose=1)
+        model.learn(3e5)
 
         try:
             model.save("PPO-grid")
